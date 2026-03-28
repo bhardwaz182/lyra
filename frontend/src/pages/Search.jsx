@@ -185,7 +185,11 @@ export default function Search() {
                   <QuickTrackItem
                     key={track.id}
                     track={track}
-                    onSelect={() => setShowSuggestions(false)}
+                    onSelect={() => {
+                      setShowSuggestions(false)
+                      setSearchParams({ q, type })
+                      doSearch(q, type)
+                    }}
                   />
                 ))}
               </>

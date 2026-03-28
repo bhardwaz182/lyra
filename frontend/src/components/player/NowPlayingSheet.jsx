@@ -48,7 +48,8 @@ export default function NowPlayingSheet() {
   function onUpperTouchEnd(e) {
     if (swipeStartY.current === null) return
     const dy = swipeStartY.current - e.changedTouches[0].clientY
-    if (dy > 60) setExpanded(true)
+    if (dy > 60) setExpanded(true)          // swipe up → expand queue
+    else if (dy < -80) toggleNowPlayingOpen() // swipe down → close sheet
     swipeStartY.current = null
   }
 
@@ -68,6 +69,8 @@ export default function NowPlayingSheet() {
   const isLiked = currentTrack && likedTrackIds.includes(currentTrack.id)
   const pct = duration ? (currentTime / duration) * 100 : 0
 
+  const EASE = 'cubic-bezier(0.4, 0, 0.2, 1)'
+
   return (
     <div className="md:hidden fixed inset-0 z-50 flex flex-col overflow-hidden">
       {/* Blurred album art background */}
@@ -85,205 +88,184 @@ export default function NowPlayingSheet() {
         <div className="absolute inset-0 bg-black/50" />
       </div>
 
-      {/* Content */}
+      {/* Content — single layout, sections animate in/out */}
       <div className="relative z-10 flex flex-col h-full" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
 
-        {expanded ? (
-          /* ── Expanded: mini player + full queue/lyrics ── */
-          <>
-            {/* Mini player bar */}
-            <div className="flex items-center gap-3 px-4 pt-4 pb-3 flex-shrink-0 border-b border-white/10">
-              <button onClick={toggleNowPlayingOpen} className="p-1 text-white/70">
-                <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-                </svg>
-              </button>
+        {/* ── Mini player (visible when expanded) ── */}
+        <div
+          className="flex-shrink-0 overflow-hidden border-b border-white/10"
+          style={{
+            maxHeight: expanded ? '80px' : '0px',
+            opacity: expanded ? 1 : 0,
+            transition: `max-height 0.35s ${EASE}, opacity 0.25s ${EASE}`,
+            pointerEvents: expanded ? 'auto' : 'none',
+          }}
+        >
+          <div className="flex items-center gap-3 px-4 pt-3 pb-3">
+            <button onClick={toggleNowPlayingOpen} className="p-1 text-white/70 flex-shrink-0">
+              <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+              </svg>
+            </button>
+            {/* Tap thumbnail or name → collapse back to song view */}
+            <div className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" onClick={() => setExpanded(false)}>
               {currentTrack?.album_art && (
-                <img
-                  src={currentTrack.album_art}
-                  alt=""
+                <img src={currentTrack.album_art} alt=""
                   className="w-10 h-10 rounded object-cover flex-shrink-0"
-                  onError={e => { e.target.style.display = 'none' }}
-                />
+                  onError={e => { e.target.style.display = 'none' }} />
               )}
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-white truncate">{currentTrack?.name}</p>
                 <p className="text-xs text-white/50 truncate">{currentTrack?.artists}</p>
               </div>
-              <button
-                onClick={() => isPlaying ? pause() : resume()}
-                className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center flex-shrink-0"
-              >
-                {isPlaying
-                  ? <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-                  : <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}
-              </button>
-              <button onClick={() => setExpanded(false)} className="p-1 text-white/50">
+            </div>
+            <button onClick={() => isPlaying ? pause() : resume()}
+              className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center flex-shrink-0">
+              {isPlaying
+                ? <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                : <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}
+            </button>
+            <button onClick={() => setExpanded(false)} className="p-1 text-white/50 flex-shrink-0">
+              <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Normal header (hidden when expanded) ── */}
+        <div
+          className="flex-shrink-0 overflow-hidden"
+          style={{
+            maxHeight: expanded ? '0px' : '64px',
+            opacity: expanded ? 0 : 1,
+            transition: `max-height 0.35s ${EASE}, opacity 0.2s ${EASE}`,
+            pointerEvents: expanded ? 'none' : 'auto',
+          }}
+        >
+          <div className="flex items-center justify-between px-4 pt-4 pb-2">
+            <button onClick={toggleNowPlayingOpen} className="p-2 text-white/70">
+              <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+              </svg>
+            </button>
+            <span className="text-sm font-medium text-white/80">Now Playing</span>
+            <div className="w-10" />
+          </div>
+        </div>
+
+        {/* ── Album art + info + progress + controls (hidden when expanded) ── */}
+        <div
+          className="flex flex-col flex-shrink-0 overflow-hidden"
+          style={{
+            maxHeight: expanded ? '0px' : '700px',
+            opacity: expanded ? 0 : 1,
+            transform: expanded ? 'translateY(-12px)' : 'translateY(0)',
+            transition: `max-height 0.38s ${EASE}, opacity 0.28s ${EASE}, transform 0.35s ${EASE}`,
+            pointerEvents: expanded ? 'none' : 'auto',
+          }}
+          onTouchStart={onUpperTouchStart}
+          onTouchEnd={onUpperTouchEnd}
+        >
+          {/* Album art */}
+          <div className="px-10 py-4">
+            <div className="w-full aspect-square rounded-2xl overflow-hidden bg-yt-surface2 shadow-2xl">
+              {currentTrack?.album_art ? (
+                <img src={currentTrack.album_art} alt=""
+                  className="w-full h-full object-cover"
+                  onError={e => { e.target.style.display = 'none' }} />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <svg width="64" height="64" fill="currentColor" viewBox="0 0 24 24" className="text-white/20">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Track info + like */}
+          <div className="px-6 flex items-center justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-bold text-white truncate">{currentTrack?.name}</p>
+              <p className="text-sm text-white/60 truncate mt-0.5">{currentTrack?.artists}</p>
+            </div>
+            <button onClick={() => currentTrack && toggleLike(currentTrack.id)}
+              className={`flex-shrink-0 ml-4 p-2 ${isLiked ? 'text-yt-red' : 'text-white/50'}`}>
+              <svg width="24" height="24" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Progress bar */}
+          <div className="px-6 pt-4 pb-1">
+            <ScrubBar pct={pct} duration={duration} currentTime={currentTime} />
+            <div className="flex justify-between mt-1">
+              <span className="text-xs text-white/50">{fmt(currentTime)}</span>
+              <span className="text-xs text-white/50">{fmt(duration)}</span>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div className="px-4 py-2 flex items-center justify-between">
+            <button onClick={toggleShuffle} className={`p-3 ${shuffle ? 'text-yt-red' : 'text-white/50'}`}>
+              <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+              </svg>
+            </button>
+            <button onClick={prev} className="p-3 text-white/80">
+              <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>
+            </button>
+            <button onClick={() => isPlaying ? pause() : resume()}
+              className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
+              {isPlaying
+                ? <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                : <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}
+            </button>
+            <button onClick={next} className="p-3 text-white/80">
+              <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
+            </button>
+            <button onClick={cycleRepeat} className={`p-3 ${repeat !== 'none' ? 'text-yt-red' : 'text-white/50'}`}>
+              {repeat === 'one' ? (
                 <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" />
+                  <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z" />
                 </svg>
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div
-              className="flex border-b border-white/10 mx-6 flex-shrink-0"
-              onTouchStart={onTabTouchStart}
-              onTouchEnd={onTabTouchEnd}
-            >
-              {['queue', 'lyrics'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`flex-1 py-2.5 text-sm font-medium capitalize transition-colors ${
-                    tab === t ? 'text-white border-b-2 border-white' : 'text-white/40'
-                  }`}
-                >
-                  {t === 'queue' ? 'Queue' : 'Lyrics'}
-                </button>
-              ))}
-            </div>
-
-            {/* Full-height tab content */}
-            <div className="flex-1 overflow-y-auto">
-              {tab === 'queue' && (
-                <QueueTab queue={queue} queueIndex={queueIndex} play={play} removeFromQueue={removeFromQueue} reorderQueue={reorderQueue} />
-              )}
-              {tab === 'lyrics' && (
-                <LyricsTab track={currentTrack} currentTime={currentTime} />
-              )}
-            </div>
-          </>
-        ) : (
-          /* ── Normal: album art + controls + peek of queue ── */
-          <>
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-4 pb-2">
-              <button onClick={toggleNowPlayingOpen} className="p-2 text-white/70 hover:text-white">
-                <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+              ) : (
+                <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
                 </svg>
-              </button>
-              <span className="text-sm font-medium text-white/80">Now Playing</span>
-              <div className="w-10" />
-            </div>
-
-            {/* Swipe-up zone: album art + info + controls */}
-            <div
-              className="flex flex-col flex-shrink-0"
-              onTouchStart={onUpperTouchStart}
-              onTouchEnd={onUpperTouchEnd}
-            >
-              {/* Album art */}
-              <div className="px-10 py-4">
-                <div className="w-full aspect-square rounded-2xl overflow-hidden bg-yt-surface2 shadow-2xl">
-                  {currentTrack?.album_art ? (
-                    <img
-                      src={currentTrack.album_art}
-                      alt=""
-                      className="w-full h-full object-cover"
-                      onError={e => { e.target.style.display = 'none' }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <svg width="64" height="64" fill="currentColor" viewBox="0 0 24 24" className="text-white/20">
-                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Track info + like */}
-              <div className="px-6 flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="text-lg font-bold text-white truncate">{currentTrack?.name}</p>
-                  <p className="text-sm text-white/60 truncate mt-0.5">{currentTrack?.artists}</p>
-                </div>
-                <button
-                  onClick={() => currentTrack && toggleLike(currentTrack.id)}
-                  className={`flex-shrink-0 ml-4 p-2 ${isLiked ? 'text-yt-red' : 'text-white/50'}`}
-                >
-                  <svg width="24" height="24" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Progress bar */}
-              <div className="px-6 pt-4 pb-1">
-                <ScrubBar pct={pct} duration={duration} currentTime={currentTime} />
-                <div className="flex justify-between mt-1">
-                  <span className="text-xs text-white/50">{fmt(currentTime)}</span>
-                  <span className="text-xs text-white/50">{fmt(duration)}</span>
-                </div>
-              </div>
-
-              {/* Controls */}
-              <div className="px-4 py-2 flex items-center justify-between">
-                <button onClick={toggleShuffle} className={`p-3 ${shuffle ? 'text-yt-red' : 'text-white/50'}`}>
-                  <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
-                  </svg>
-                </button>
-                <button onClick={prev} className="p-3 text-white/80">
-                  <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>
-                </button>
-                <button
-                  onClick={() => isPlaying ? pause() : resume()}
-                  className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-lg"
-                >
-                  {isPlaying
-                    ? <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-                    : <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}
-                </button>
-                <button onClick={next} className="p-3 text-white/80">
-                  <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
-                </button>
-                <button onClick={cycleRepeat} className={`p-3 ${repeat !== 'none' ? 'text-yt-red' : 'text-white/50'}`}>
-                  {repeat === 'one' ? (
-                    <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z" />
-                    </svg>
-                  ) : (
-                    <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Tabs — swipe up to expand, swipe down to collapse */}
-            <div
-              className="flex border-b border-white/10 mx-6 flex-shrink-0"
-              onTouchStart={onUpperTouchStart}
-              onTouchEnd={onUpperTouchEnd}
-            >
-              {['queue', 'lyrics'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`flex-1 py-2.5 text-sm font-medium capitalize transition-colors ${
-                    tab === t ? 'text-white border-b-2 border-white' : 'text-white/40'
-                  }`}
-                >
-                  {t === 'queue' ? 'Queue' : 'Lyrics'}
-                </button>
-              ))}
-            </div>
-
-            {/* Peek of tab content */}
-            <div className="flex-1 overflow-y-auto">
-              {tab === 'queue' && (
-                <QueueTab queue={queue} queueIndex={queueIndex} play={play} removeFromQueue={removeFromQueue} reorderQueue={reorderQueue} />
               )}
-              {tab === 'lyrics' && (
-                <LyricsTab track={currentTrack} currentTime={currentTime} />
-              )}
-            </div>
-          </>
-        )}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Tabs (always visible, swipe up/down) ── */}
+        <div
+          className="flex border-b border-white/10 mx-6 flex-shrink-0"
+          onTouchStart={onUpperTouchStart}
+          onTouchEnd={expanded ? onTabTouchEnd : onUpperTouchEnd}
+        >
+          {['queue', 'lyrics'].map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 text-sm font-medium capitalize transition-colors ${
+                tab === t ? 'text-white border-b-2 border-white' : 'text-white/40'
+              }`}>
+              {t === 'queue' ? 'Queue' : 'Lyrics'}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Tab content ── */}
+        <div className="flex-1 overflow-y-auto">
+          {tab === 'queue' && (
+            <QueueTab queue={queue} queueIndex={queueIndex} play={play} removeFromQueue={removeFromQueue} reorderQueue={reorderQueue} />
+          )}
+          {tab === 'lyrics' && (
+            <LyricsTab track={currentTrack} currentTime={currentTime} />
+          )}
+        </div>
+
       </div>
     </div>
   )
