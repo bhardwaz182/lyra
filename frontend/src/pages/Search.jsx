@@ -32,8 +32,15 @@ export default function Search() {
   const [suggestions, setSuggestions] = useState([])
   const [quickTracks, setQuickTracks] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [inputFocused, setInputFocused] = useState(false)
   const suggestTimer = useRef(null)
+  const blurTimer = useRef(null)
   const inputRef = useRef(null)
+
+  const recentSearches = usePlayerStore(s => s.recentSearches)
+  const { addRecentSearch, removeRecentSearch, clearRecentSearches } = usePlayerStore()
+
+  const showRecentDropdown = inputFocused && q.length < 2 && recentSearches.length > 0
 
   function doSearch(query, searchType, newOffset = 0) {
     if (!query.trim()) return
@@ -104,6 +111,7 @@ export default function Search() {
   function handleSubmit(e) {
     e?.preventDefault()
     if (!q.trim()) return
+    addRecentSearch(q.trim())
     setSearchParams({ q, type })
     doSearch(q, type)
   }
@@ -112,6 +120,7 @@ export default function Search() {
     setQ(s)
     setSuggestions([])
     setShowSuggestions(false)
+    addRecentSearch(s)
     setSearchParams({ q: s, type })
     doSearch(s, type)
   }
@@ -140,8 +149,8 @@ export default function Search() {
             ref={inputRef}
             value={q}
             onChange={e => handleInput(e.target.value)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            onFocus={() => suggestions.length && setShowSuggestions(true)}
+            onBlur={() => { blurTimer.current = setTimeout(() => { setShowSuggestions(false); setInputFocused(false) }, 150) }}
+            onFocus={() => { clearTimeout(blurTimer.current); setInputFocused(true); if (suggestions.length && q.length >= 2) setShowSuggestions(true) }}
             placeholder="Songs, artists, podcasts"
             className="flex-1 bg-transparent outline-none text-sm"
           />
@@ -152,9 +161,49 @@ export default function Search() {
           )}
         </div>
 
+        {/* Recent searches dropdown — shown when focused with empty input */}
+        {showRecentDropdown && !showSuggestions && (
+          <div onMouseDown={e => e.preventDefault()} className="absolute top-12 left-0 max-w-xl w-full bg-[#212121] rounded-2xl shadow-2xl z-50 overflow-hidden border border-yt-border">
+            <div className="flex items-center justify-between px-5 pt-3 pb-2">
+              <span className="text-xs font-semibold text-yt-muted uppercase tracking-wider">Recent searches</span>
+              <button
+                type="button"
+                onClick={clearRecentSearches}
+                className="text-xs text-yt-muted hover:text-white transition-colors"
+              >
+                Clear all
+              </button>
+            </div>
+            {recentSearches.map(query => (
+              <div key={query} className="flex items-center gap-3 px-5 py-2.5 hover:bg-yt-surface2 transition-colors group">
+                <svg width="15" height="15" fill="currentColor" viewBox="0 0 24 24" className="text-yt-muted flex-shrink-0">
+                  <path d="M13 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.05-4.95L15 10h5V5l-1.76 1.76A8.97 8.97 0 0 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+                </svg>
+                <button
+                  type="button"
+                  onClick={() => pickSuggestion(query)}
+                  className="flex-1 text-left text-sm text-yt-text truncate"
+                >
+                  {query}
+                </button>
+                <button
+                  type="button"
+                  onClick={e => { e.stopPropagation(); removeRecentSearch(query) }}
+                  className="p-1 text-yt-muted hover:text-white opacity-0 group-hover:opacity-100 sm:group-hover:opacity-100 transition-opacity flex-shrink-0"
+                  aria-label={`Remove ${query}`}
+                >
+                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Autocomplete dropdown */}
         {showSuggestions && (suggestions.length > 0 || quickTracks.length > 0) && (
-          <div className="absolute top-12 left-0 max-w-xl w-full bg-[#212121] rounded-2xl shadow-2xl z-50 overflow-hidden border border-yt-border">
+          <div onMouseDown={e => e.preventDefault()} className="absolute top-12 left-0 max-w-xl w-full bg-[#212121] rounded-2xl shadow-2xl z-50 overflow-hidden border border-yt-border">
             {suggestions.slice(0, 5).map(s => {
               const lower = s.toLowerCase()
               const qLower = q.toLowerCase()
@@ -189,6 +238,7 @@ export default function Search() {
                     track={track}
                     allTracks={quickTracks}
                     onSelect={() => {
+                      addRecentSearch(q.trim())
                       setShowSuggestions(false)
                       setSearchParams({ q, type })
                       doSearch(q, type)
@@ -231,14 +281,50 @@ export default function Search() {
         </div>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — recent searches or generic prompt */}
       {!searchError && !q.trim() && !hasResults && (
-        <div className="text-center text-yt-muted py-16">
-          <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24" className="mx-auto mb-4 opacity-40">
-            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-          </svg>
-          <p>Search for songs, artists, and albums</p>
-        </div>
+        recentSearches.length > 0 ? (
+          <div className="mt-2">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-yt-muted uppercase tracking-wider">Recent searches</h2>
+              <button
+                onClick={clearRecentSearches}
+                className="text-xs text-yt-muted hover:text-white transition-colors"
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="space-y-0.5">
+              {recentSearches.map(query => (
+                <div key={query} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-yt-surface transition-colors group cursor-pointer"
+                  onClick={() => pickSuggestion(query)}>
+                  <div className="w-10 h-10 rounded-full bg-yt-surface2 flex items-center justify-center flex-shrink-0">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24" className="text-yt-muted">
+                      <path d="M13 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.05-4.95L15 10h5V5l-1.76 1.76A8.97 8.97 0 0 0 13 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+                    </svg>
+                  </div>
+                  <span className="flex-1 text-sm text-yt-text truncate">{query}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); removeRecentSearch(query) }}
+                    className="p-2 text-yt-muted hover:text-white opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    aria-label={`Remove ${query}`}
+                  >
+                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center text-yt-muted py-16">
+            <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24" className="mx-auto mb-4 opacity-40">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+            </svg>
+            <p>Search for songs, artists, and albums</p>
+          </div>
+        )
       )}
 
       {/* ── ALL mode — single flat list ── */}

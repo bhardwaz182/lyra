@@ -25,6 +25,7 @@ const usePlayerStore = create(
       likedTracks: [],
       playlists: [],
       recentTracks: [],
+      recentSearches: [],   // array of query strings, newest first
 
       // ────────────────── ACTIONS ──────────────────
 
@@ -170,6 +171,18 @@ const usePlayerStore = create(
       deletePlaylist(playlistId) {
         set(s => ({ playlists: s.playlists.filter(p => p.id !== playlistId) }))
       },
+
+      addRecentSearch(query) {
+        const q = query.trim()
+        if (!q) return
+        set(s => ({
+          recentSearches: [q, ...s.recentSearches.filter(r => r !== q)].slice(0, 10),
+        }))
+      },
+      removeRecentSearch(query) {
+        set(s => ({ recentSearches: s.recentSearches.filter(r => r !== query) }))
+      },
+      clearRecentSearches() { set({ recentSearches: [] }) },
     }),
     {
       name: 'ytm-clone-player',
@@ -177,6 +190,7 @@ const usePlayerStore = create(
         likedTracks: s.likedTracks,
         playlists: s.playlists,
         recentTracks: s.recentTracks,
+        recentSearches: s.recentSearches,
         volume: s.volume,
         shuffle: s.shuffle,
         repeat: s.repeat,
