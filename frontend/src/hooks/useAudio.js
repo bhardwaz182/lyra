@@ -36,6 +36,7 @@ export function useAudio() {
     const isLastTrack = queueIndex >= queue.length - 1
     if (!isLastTrack) return
     if (recsFetchedFor.has(currentTrack.id)) return
+    if (recsFetchedFor.size > 200) recsFetchedFor.clear()
     recsFetchedFor.add(currentTrack.id)
 
     api.getRecommendations(

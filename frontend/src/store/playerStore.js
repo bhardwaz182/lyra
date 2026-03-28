@@ -22,7 +22,7 @@ const usePlayerStore = create(
       nowPlayingOpen: false,
 
       // ── Library (persisted) ──
-      likedTrackIds: [],
+      likedTracks: [],
       playlists: [],
       recentTracks: [],
 
@@ -58,7 +58,12 @@ const usePlayerStore = create(
         }
         let nextIdx
         if (shuffle) {
-          nextIdx = Math.floor(Math.random() * queue.length)
+          if (queue.length === 1) {
+            nextIdx = 0
+          } else {
+            const pool = queue.map((_, i) => i).filter(i => i !== get().queueIndex)
+            nextIdx = pool[Math.floor(Math.random() * pool.length)]
+          }
         } else {
           nextIdx = queueIndex + 1
           if (nextIdx >= queue.length) {
@@ -132,17 +137,18 @@ const usePlayerStore = create(
       toggleLyricsOpen() { set(s => ({ lyricsOpen: !s.lyricsOpen })) },
       toggleNowPlayingOpen() { set(s => ({ nowPlayingOpen: !s.nowPlayingOpen })) },
 
-      toggleLike(trackId) {
+      toggleLike(track) {
         set(s => {
-          const liked = s.likedTrackIds.includes(trackId)
-            ? s.likedTrackIds.filter(id => id !== trackId)
-            : [...s.likedTrackIds, trackId]
-          return { likedTrackIds: liked }
+          const alreadyLiked = s.likedTracks.some(t => t.id === track.id)
+          const liked = alreadyLiked
+            ? s.likedTracks.filter(t => t.id !== track.id)
+            : [...s.likedTracks, track]
+          return { likedTracks: liked }
         })
       },
 
       isLiked(trackId) {
-        return get().likedTrackIds.includes(trackId)
+        return get().likedTracks.some(t => t.id === trackId)
       },
 
       createPlaylist(name) {
@@ -168,7 +174,7 @@ const usePlayerStore = create(
     {
       name: 'ytm-clone-player',
       partialize: (s) => ({
-        likedTrackIds: s.likedTrackIds,
+        likedTracks: s.likedTracks,
         playlists: s.playlists,
         recentTracks: s.recentTracks,
         volume: s.volume,

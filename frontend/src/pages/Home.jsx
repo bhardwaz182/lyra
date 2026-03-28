@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../api/client'
 import usePlayerStore from '../store/playerStore'
 import AlbumCard from '../components/common/AlbumCard'
@@ -7,23 +7,50 @@ import ArtistCard from '../components/common/ArtistCard'
 import TrackRow from '../components/common/TrackRow'
 import { RowOfCards, TrackSkeleton } from '../components/common/Skeleton'
 
+function greeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 export default function Home() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [activeMood, setActiveMood] = useState(null)
+  const [error, setError] = useState(null)
   const { play } = usePlayerStore()
   const navigate = useNavigate()
 
-  useEffect(() => {
+  function fetchHome() {
+    setLoading(true)
+    setError(null)
     api.getHome()
       .then(setData)
-      .catch(console.error)
+      .catch(err => { setError(err); setLoading(false) })
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchHome()
   }, [])
 
+  if (error) {
+    return (
+      <div className="px-4 md:px-8 py-6 flex flex-col items-center justify-center min-h-[40vh]">
+        <p className="text-yt-muted mb-4">Couldn't load content. Try again.</p>
+        <button
+          onClick={fetchHome}
+          className="px-4 py-2 bg-yt-surface hover:bg-yt-surface2 text-white rounded-lg text-sm"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div className="px-8 py-6">
-      <h1 className="text-2xl font-bold mb-6">Good evening</h1>
+    <div className="px-4 md:px-8 py-6">
+      <h1 className="text-2xl font-bold mb-6">{greeting()}</h1>
 
       {/* Trending Tracks */}
       <section className="mb-8">
@@ -50,7 +77,10 @@ export default function Home() {
 
       {/* New Releases */}
       <section className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">New Releases</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">New Releases</h2>
+          <Link to="/search?q=new+releases&type=album" className="text-sm text-yt-muted hover:text-white">See all</Link>
+        </div>
         {loading
           ? <RowOfCards />
           : <div className="carousel-scroll">
@@ -63,7 +93,10 @@ export default function Home() {
 
       {/* Featured Artists */}
       <section className="mb-8">
-        <h2 className="text-lg font-semibold mb-4">Top Artists</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">Top Artists</h2>
+          <Link to="/search?q=top+artists&type=artist" className="text-sm text-yt-muted hover:text-white">See all</Link>
+        </div>
         {loading
           ? <RowOfCards />
           : <div className="carousel-scroll">
@@ -83,14 +116,9 @@ export default function Home() {
               <button
                 key={m.label}
                 onClick={() => {
-                  setActiveMood(m.label)
                   navigate(`/search?q=${encodeURIComponent(m.query)}&type=track`)
                 }}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                  activeMood === m.label
-                    ? 'bg-yt-red text-white'
-                    : 'bg-yt-surface text-yt-muted hover:bg-yt-surface2 hover:text-white'
-                }`}
+                className="px-4 py-2 rounded-full text-sm font-medium transition-colors bg-yt-surface text-yt-muted hover:bg-yt-surface2 hover:text-white"
               >
                 {m.label}
               </button>

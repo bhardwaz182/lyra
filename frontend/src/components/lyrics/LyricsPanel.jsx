@@ -1,18 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import usePlayerStore from '../../store/playerStore'
 import { api } from '../../api/client'
-
-function parseLRC(lrc) {
-  if (!lrc) return null
-  const lines = []
-  const regex = /\[(\d+):(\d+\.\d+)\](.*)/g
-  let m
-  while ((m = regex.exec(lrc)) !== null) {
-    const time = parseInt(m[1]) * 60 + parseFloat(m[2])
-    lines.push({ time, text: m[3].trim() })
-  }
-  return lines.length > 0 ? lines : null
-}
+import parseLRC from '../../utils/parseLRC'
 
 export default function LyricsPanel() {
   const lyricsOpen = usePlayerStore(s => s.lyricsOpen)
@@ -41,6 +30,14 @@ export default function LyricsPanel() {
       .finally(() => setLoading(false))
   }, [currentTrack?.id, lyricsOpen])
 
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape') toggleLyricsOpen()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Highlight current line for synced lyrics
   useEffect(() => {
     if (!syncedLines) return
@@ -65,10 +62,10 @@ export default function LyricsPanel() {
           transform: 'scale(1.1)',
         }}
       />
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-black/60" onClick={toggleLyricsOpen} />
 
       {/* Panel */}
-      <div className="relative z-10 ml-auto w-full max-w-lg h-full flex flex-col bg-black/40 backdrop-blur-sm">
+      <div className="relative z-10 ml-auto w-full max-w-lg h-full flex flex-col bg-black/40 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
           <div className="flex items-center gap-3">

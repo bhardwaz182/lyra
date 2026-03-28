@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -71,6 +73,11 @@ body {
 /* Hover play overlay */
 .group:hover .play-overlay { opacity: 1; }
 .play-overlay { opacity: 0; transition: opacity 0.2s; }
+
+@media (hover: none) {
+  .play-overlay { opacity: 1; }
+  .track-play-btn { display: flex; }
+}
 
 /* Track row hover */
 .track-row:hover { background: #282828; }

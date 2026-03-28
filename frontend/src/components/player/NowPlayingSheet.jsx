@@ -2,17 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import usePlayerStore from '../../store/playerStore'
 import { api } from '../../api/client'
 import { seekAudio } from '../../hooks/useAudio'
-
-function parseLRC(lrc) {
-  if (!lrc) return null
-  const lines = []
-  const regex = /\[(\d+):(\d+\.\d+)\](.*)/g
-  let m
-  while ((m = regex.exec(lrc)) !== null) {
-    lines.push({ time: parseInt(m[1]) * 60 + parseFloat(m[2]), text: m[3].trim() })
-  }
-  return lines.length > 0 ? lines : null
-}
+import parseLRC from '../../utils/parseLRC'
 
 function fmt(secs) {
   if (!secs || isNaN(secs)) return '0:00'
@@ -27,7 +17,7 @@ export default function NowPlayingSheet() {
   const repeat         = usePlayerStore(s => s.repeat)
   const currentTime    = usePlayerStore(s => s.currentTime)
   const duration       = usePlayerStore(s => s.duration)
-  const likedTrackIds  = usePlayerStore(s => s.likedTrackIds)
+  const likedTracks    = usePlayerStore(s => s.likedTracks)
   const queue          = usePlayerStore(s => s.queue)
   const queueIndex     = usePlayerStore(s => s.queueIndex)
 
@@ -39,34 +29,35 @@ export default function NowPlayingSheet() {
 
   const [tab, setTab] = useState('queue')
   const [expanded, setExpanded] = useState(false)
-  const swipeStartY = useRef(null)
+  const upperSwipeStartY = useRef(null)
+  const tabSwipeStartY = useRef(null)
 
   // Swipe up on upper section → expand queue
   function onUpperTouchStart(e) {
-    swipeStartY.current = e.touches[0].clientY
+    upperSwipeStartY.current = e.touches[0].clientY
   }
   function onUpperTouchEnd(e) {
-    if (swipeStartY.current === null) return
-    const dy = swipeStartY.current - e.changedTouches[0].clientY
+    if (upperSwipeStartY.current === null) return
+    const dy = upperSwipeStartY.current - e.changedTouches[0].clientY
     if (dy > 60) setExpanded(true)          // swipe up → expand queue
     else if (dy < -80) toggleNowPlayingOpen() // swipe down → close sheet
-    swipeStartY.current = null
+    upperSwipeStartY.current = null
   }
 
   // Swipe down on tab bar → collapse
   function onTabTouchStart(e) {
-    swipeStartY.current = e.touches[0].clientY
+    tabSwipeStartY.current = e.touches[0].clientY
   }
   function onTabTouchEnd(e) {
-    if (swipeStartY.current === null) return
-    const dy = e.changedTouches[0].clientY - swipeStartY.current
+    if (tabSwipeStartY.current === null) return
+    const dy = e.changedTouches[0].clientY - tabSwipeStartY.current
     if (dy > 60) setExpanded(false)
-    swipeStartY.current = null
+    tabSwipeStartY.current = null
   }
 
   if (!nowPlayingOpen) return null
 
-  const isLiked = currentTrack && likedTrackIds.includes(currentTrack.id)
+  const isLiked = currentTrack && likedTracks.some(t => t.id === currentTrack.id)
   const pct = duration ? (currentTime / duration) * 100 : 0
 
   const EASE = 'cubic-bezier(0.4, 0, 0.2, 1)'
@@ -90,6 +81,15 @@ export default function NowPlayingSheet() {
 
       {/* Content — single layout, sections animate in/out */}
       <div className="relative z-10 flex flex-col h-full" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+
+        {/* Drag handle pill */}
+        <div
+          className="flex justify-center pt-2 pb-1 flex-shrink-0"
+          onTouchStart={onUpperTouchStart}
+          onTouchEnd={onUpperTouchEnd}
+        >
+          <div className="w-10 h-1 rounded-full bg-white/30" />
+        </div>
 
         {/* ── Mini player (visible when expanded) ── */}
         <div
@@ -144,7 +144,7 @@ export default function NowPlayingSheet() {
           }}
         >
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
-            <button onClick={toggleNowPlayingOpen} className="p-2 text-white/70">
+            <button onClick={toggleNowPlayingOpen} aria-label="Close Now Playing" className="p-2 text-white/70">
               <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
               </svg>
@@ -157,15 +157,15 @@ export default function NowPlayingSheet() {
         {/* ── Album art + info + progress + controls (hidden when expanded) ── */}
         <div
           className="flex flex-col flex-shrink-0 overflow-hidden"
+          onTouchStart={onUpperTouchStart}
+          onTouchEnd={onUpperTouchEnd}
           style={{
-            maxHeight: expanded ? '0px' : '700px',
+            maxHeight: expanded ? '0px' : 'calc(100svh - 140px)',
             opacity: expanded ? 0 : 1,
             transform: expanded ? 'translateY(-12px)' : 'translateY(0)',
             transition: `max-height 0.38s ${EASE}, opacity 0.28s ${EASE}, transform 0.35s ${EASE}`,
             pointerEvents: expanded ? 'none' : 'auto',
           }}
-          onTouchStart={onUpperTouchStart}
-          onTouchEnd={onUpperTouchEnd}
         >
           {/* Album art */}
           <div className="px-10 py-4">
@@ -190,7 +190,8 @@ export default function NowPlayingSheet() {
               <p className="text-lg font-bold text-white truncate">{currentTrack?.name}</p>
               <p className="text-sm text-white/60 truncate mt-0.5">{currentTrack?.artists}</p>
             </div>
-            <button onClick={() => currentTrack && toggleLike(currentTrack.id)}
+            <button onClick={() => currentTrack && toggleLike(currentTrack)}
+              aria-label={isLiked ? 'Unlike' : 'Like'}
               className={`flex-shrink-0 ml-4 p-2 ${isLiked ? 'text-yt-red' : 'text-white/50'}`}>
               <svg width="24" height="24" fill={isLiked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
@@ -209,24 +210,25 @@ export default function NowPlayingSheet() {
 
           {/* Controls */}
           <div className="px-4 py-2 flex items-center justify-between">
-            <button onClick={toggleShuffle} className={`p-3 ${shuffle ? 'text-yt-red' : 'text-white/50'}`}>
+            <button onClick={toggleShuffle} aria-label="Shuffle" className={`p-3 ${shuffle ? 'text-yt-red' : 'text-white/50'}`}>
               <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
               </svg>
             </button>
-            <button onClick={prev} className="p-3 text-white/80">
+            <button onClick={prev} aria-label="Previous" className="p-3 text-white/80">
               <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>
             </button>
             <button onClick={() => isPlaying ? pause() : resume()}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
               className="w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-lg">
               {isPlaying
                 ? <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
                 : <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>}
             </button>
-            <button onClick={next} className="p-3 text-white/80">
+            <button onClick={next} aria-label="Next" className="p-3 text-white/80">
               <svg width="28" height="28" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
             </button>
-            <button onClick={cycleRepeat} className={`p-3 ${repeat !== 'none' ? 'text-yt-red' : 'text-white/50'}`}>
+            <button onClick={cycleRepeat} aria-label="Repeat" className={`p-3 ${repeat !== 'none' ? 'text-yt-red' : 'text-white/50'}`}>
               {repeat === 'one' ? (
                 <svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z" />
@@ -243,7 +245,7 @@ export default function NowPlayingSheet() {
         {/* ── Tabs (always visible, swipe up/down) ── */}
         <div
           className="flex border-b border-white/10 mx-6 flex-shrink-0"
-          onTouchStart={onUpperTouchStart}
+          onTouchStart={onTabTouchStart}
           onTouchEnd={expanded ? onTabTouchEnd : onUpperTouchEnd}
         >
           {['queue', 'lyrics'].map(t => (
@@ -271,17 +273,62 @@ export default function NowPlayingSheet() {
   )
 }
 
-function ScrubBar({ pct, duration, currentTime }) {
+function ScrubBar({ pct, duration }) {
   const barRef = useRef(null)
+  const [dragging, setDragging] = useState(false)
+  const [localPct, setLocalPct] = useState(null)
+
+  function clientXToPercent(clientX) {
+    const rect = barRef.current.getBoundingClientRect()
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+  }
+
+  // Mouse
   function handleClick(e) {
     if (!duration) return
-    const rect = barRef.current.getBoundingClientRect()
-    seekAudio(((e.clientX - rect.left) / rect.width) * duration)
+    seekAudio(clientXToPercent(e.clientX) * duration)
   }
+
+  // Touch — non-passive so we can preventDefault and stop swipe-to-close interfering
+  function handleTouchStart(e) {
+    e.stopPropagation()
+    if (!duration) return
+    setDragging(true)
+    const ratio = clientXToPercent(e.touches[0].clientX)
+    setLocalPct(ratio * 100)
+  }
+
+  function handleTouchMove(e) {
+    e.stopPropagation()
+    if (!dragging || !duration) return
+    const ratio = clientXToPercent(e.touches[0].clientX)
+    setLocalPct(ratio * 100)
+  }
+
+  function handleTouchEnd(e) {
+    e.stopPropagation()
+    if (!dragging || !duration) return
+    const ratio = clientXToPercent(e.changedTouches[0].clientX)
+    seekAudio(ratio * duration)
+    setDragging(false)
+    setLocalPct(null)
+  }
+
+  const displayPct = localPct !== null ? localPct : pct
+
   return (
-    <div ref={barRef} onClick={handleClick} className="w-full h-1 bg-white/20 rounded-full cursor-pointer group">
-      <div className="h-full bg-white rounded-full relative" style={{ width: `${pct}%` }}>
-        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100" />
+    /* Tall invisible hit area so fat fingers can tap easily */
+    <div
+      className="w-full py-3 cursor-pointer"
+      onClick={handleClick}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div ref={barRef} className="w-full h-1 bg-white/20 rounded-full relative group">
+        <div className="h-full bg-white rounded-full relative transition-none" style={{ width: `${displayPct}%` }}>
+          <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow ${dragging ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'} transition-all`} />
+        </div>
       </div>
     </div>
   )
@@ -290,19 +337,26 @@ function ScrubBar({ pct, duration, currentTime }) {
 function QueueTab({ queue, queueIndex, play, removeFromQueue, reorderQueue }) {
   const [expanded, setExpanded] = useState(null)
   const [dragOver, setDragOver] = useState(null)
+  const [ghostTrack, setGhostTrack] = useState(null)
   const [touchDragging, setTouchDragging] = useState(false)
-  const dragIdx = useRef(null)
-  const dragOverRef = useRef(null)
+  const [pressActive, setPressActive] = useState(false)
+
+  const pressActiveIdx = useRef(null)
+  const dragIdx        = useRef(null)
+  const dragOverRef    = useRef(null)
   const touchDragActive = useRef(false)
-  const touchTimer = useRef(null)
-  const listRef = useRef(null)
+  const touchTimer     = useRef(null)
+  const touchPosRef    = useRef(null)
+  const ghostRef       = useRef(null)
+  const ghostOffsetY   = useRef(28)
+  const listRef        = useRef(null)
 
   function setDragOverBoth(val) {
     dragOverRef.current = val
     setDragOver(val)
   }
 
-  // Non-passive touchmove to prevent scroll while dragging
+  // Non-passive touchmove — updates ghost position directly via DOM (60fps, no React re-render lag)
   useEffect(() => {
     const el = listRef.current
     if (!el) return
@@ -310,6 +364,14 @@ function QueueTab({ queue, queueIndex, play, removeFromQueue, reorderQueue }) {
       if (!touchDragActive.current) return
       e.preventDefault()
       const touch = e.touches[0]
+      touchPosRef.current = { x: touch.clientX, y: touch.clientY }
+
+      // Direct DOM transform — bypasses React scheduler for smooth 60fps
+      if (ghostRef.current) {
+        ghostRef.current.style.transform = `translateY(${touch.clientY - ghostOffsetY.current}px)`
+      }
+
+      // Update drop target (less critical, OK to go through React)
       const target = document.elementFromPoint(touch.clientX, touch.clientY)
       const row = target?.closest('[data-qi]')
       if (row) {
@@ -322,19 +384,45 @@ function QueueTab({ queue, queueIndex, play, removeFromQueue, reorderQueue }) {
   }, [])
 
   function onTouchStartItem(e, i) {
+    const touch = e.touches[0]
+    touchPosRef.current = { x: touch.clientX, y: touch.clientY }
     dragIdx.current = i
+    pressActiveIdx.current = i
     touchDragActive.current = false
+    setPressActive(true)
     clearTimeout(touchTimer.current)
     touchTimer.current = setTimeout(() => {
       touchDragActive.current = true
       setTouchDragging(true)
+      setPressActive(false)
       setExpanded(null)
+
+      // Measure row position to compute precise offset (ghost anchors to exact touch point on the row)
+      const rowEl = listRef.current?.querySelector(`[data-qi="${i}"]`)
+      const listRect = listRef.current?.getBoundingClientRect()
+      if (rowEl && listRect && touchPosRef.current) {
+        const rowRect = rowEl.getBoundingClientRect()
+        ghostOffsetY.current = touchPosRef.current.y - rowRect.top
+        // Position ghost horizontally aligned with the list
+        if (ghostRef.current) {
+          ghostRef.current.style.left   = `${listRect.left}px`
+          ghostRef.current.style.width  = `${listRect.width}px`
+          ghostRef.current.style.transform = `translateY(${touchPosRef.current.y - ghostOffsetY.current}px)`
+          ghostRef.current.style.display = 'flex'
+        }
+      }
+
+      setGhostTrack(queue[i])
       navigator.vibrate?.(50)
     }, 250)
   }
 
   function onTouchEndItem() {
     clearTimeout(touchTimer.current)
+    setPressActive(false)
+    // Hide ghost immediately
+    if (ghostRef.current) ghostRef.current.style.display = 'none'
+    setGhostTrack(null)
     if (
       touchDragActive.current &&
       dragIdx.current !== null &&
@@ -344,77 +432,123 @@ function QueueTab({ queue, queueIndex, play, removeFromQueue, reorderQueue }) {
       reorderQueue(dragIdx.current, dragOverRef.current)
     }
     dragIdx.current = null
+    pressActiveIdx.current = null
     touchDragActive.current = false
     setTouchDragging(false)
     setDragOverBoth(null)
   }
 
+  const ROW_HEIGHT = 56
+
   return (
-    <div ref={listRef} className="py-2">
-      {queue.length === 0 && (
-        <p className="text-center text-white/40 py-8 text-sm">Queue is empty</p>
-      )}
-      {queue.map((track, i) => (
-        <div key={`${track.id}-${i}`} data-qi={i}>
-          <div
-            onTouchStart={e => onTouchStartItem(e, i)}
-            onTouchEnd={onTouchEndItem}
-            className={`flex items-center gap-3 px-4 py-3 select-none transition-colors
-              ${i === queueIndex ? 'border-l-2 border-yt-red' : 'border-l-2 border-transparent'}
-              ${dragOver === i ? 'border-t-2 border-white/60' : 'border-t border-transparent'}
-              ${touchDragging && dragIdx.current === i ? 'opacity-40' : ''}
-            `}
-          >
-            {/* Grip handle */}
-            <div className="flex-shrink-0 text-white/20 touch-none">
-              <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 6h2v2H8V6zm0 4h2v2H8v-2zm0 4h2v2H8v-2zm6-8h2v2h-2V6zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z"/>
-              </svg>
-            </div>
-
-            <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-white/10 cursor-pointer"
-              onClick={() => !touchDragging && play(track, queue)}>
-              {track.album_art && (
-                <img src={track.album_art} alt="" className="w-full h-full object-cover"
-                  onError={e => { e.target.style.display = 'none' }} />
-              )}
-            </div>
-            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => !touchDragging && play(track, queue)}>
-              <p className={`text-sm font-medium truncate ${i === queueIndex ? 'text-yt-red' : 'text-white'}`}>
-                {track.name}
-              </p>
-              <p className="text-xs text-white/50 truncate">{track.artists}</p>
-            </div>
-            {/* ⋮ menu toggle */}
-            <button
-              onClick={() => setExpanded(expanded === i ? null : i)}
-              className="p-1.5 text-white/40 hover:text-white"
-            >
-              <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
-              </svg>
-            </button>
-          </div>
-
-          {/* Inline actions row */}
-          {expanded === i && (
-            <div className="flex items-center gap-1 px-4 pb-2 ml-13">
-              <ActionBtn
-                label="↑"
-                disabled={i === 0}
-                onClick={() => { reorderQueue(i, i - 1); setExpanded(i - 1) }}
-              />
-              <ActionBtn
-                label="↓"
-                disabled={i === queue.length - 1}
-                onClick={() => { reorderQueue(i, i + 1); setExpanded(i + 1) }}
-              />
-              <ActionBtn label="Remove" onClick={() => { removeFromQueue(i); setExpanded(null) }} />
-            </div>
-          )}
+    <>
+      {/* Ghost card — always mounted, shown/hidden via display for zero-latency appearance */}
+      <div
+        ref={ghostRef}
+        className="fixed z-[70] pointer-events-none items-center gap-3 px-4 py-3"
+        style={{
+          display: 'none',
+          top: 0,
+          left: 0,
+          width: '100%',
+          willChange: 'transform',
+          background: 'rgba(15,15,28,0.96)',
+          borderTop: '1px solid rgba(255,255,255,0.12)',
+          borderBottom: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.85), 0 4px 16px rgba(0,0,0,0.5)',
+          transform: 'translateY(0px)',
+        }}
+      >
+        {ghostTrack?.album_art && (
+          <img src={ghostTrack.album_art} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white truncate">{ghostTrack?.name}</p>
+          <p className="text-xs text-white/50 truncate">{ghostTrack?.artists}</p>
         </div>
-      ))}
-    </div>
+        {/* Grip icon so it looks like the real row */}
+        <div className="flex-shrink-0 text-white/40 ml-2">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 6h2v2H8V6zm0 4h2v2H8v-2zm0 4h2v2H8v-2zm6-8h2v2h-2V6zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z"/>
+          </svg>
+        </div>
+      </div>
+
+      <div ref={listRef} className="py-2">
+        {queue.length === 0 && (
+          <p className="text-center text-white/40 py-8 text-sm">Queue is empty</p>
+        )}
+        {queue.map((track, i) => (
+          <div
+            key={`${track.id}-${i}`}
+            data-qi={i}
+            style={{
+              paddingTop: dragOver === i && touchDragging && dragIdx.current !== i
+                ? `${ROW_HEIGHT}px`
+                : '0px',
+              transition: 'padding-top 0.18s cubic-bezier(0.4,0,0.2,1)',
+            }}
+          >
+            <div
+              onTouchStart={e => onTouchStartItem(e, i)}
+              onTouchEnd={onTouchEndItem}
+              className={`flex items-center gap-3 px-4 py-3 select-none transition-opacity duration-150
+                ${i === queueIndex ? 'border-l-2' : 'border-l-2 border-transparent'}
+                ${touchDragging && dragIdx.current === i ? 'opacity-0' : 'opacity-100'}
+                ${pressActive && pressActiveIdx.current === i ? 'scale-95 bg-white/10' : ''}
+              `}
+            >
+              {/* Grip handle */}
+              <div className="flex-shrink-0 text-white/20 touch-none">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 6h2v2H8V6zm0 4h2v2H8v-2zm0 4h2v2H8v-2zm6-8h2v2h-2V6zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z"/>
+                </svg>
+              </div>
+
+              <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-white/10 cursor-pointer"
+                onClick={() => !touchDragging && play(track, queue)}>
+                {track.album_art && (
+                  <img src={track.album_art} alt="" className="w-full h-full object-cover"
+                    onError={e => { e.target.style.display = 'none' }} />
+                )}
+              </div>
+              <div className="flex-1 min-w-0 cursor-pointer" onClick={() => !touchDragging && play(track, queue)}>
+                <p className={`text-sm font-medium truncate ${i === queueIndex ? 'text-yt-red' : 'text-white'}`}>
+                  {track.name}
+                </p>
+                <p className="text-xs text-white/50 truncate">{track.artists}</p>
+              </div>
+              {/* ⋮ menu toggle */}
+              <button
+                onClick={() => setExpanded(expanded === i ? null : i)}
+                className="p-1.5 text-white/40 hover:text-white"
+              >
+                <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Inline actions row */}
+            {expanded === i && (
+              <div className="flex items-center gap-1 px-4 pb-2 ml-14">
+                <ActionBtn
+                  label={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 15l-6-6-6 6"/></svg>}
+                  disabled={i === 0}
+                  onClick={() => { reorderQueue(i, i - 1); setExpanded(i - 1) }}
+                />
+                <ActionBtn
+                  label={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>}
+                  disabled={i === queue.length - 1}
+                  onClick={() => { reorderQueue(i, i + 1); setExpanded(i + 1) }}
+                />
+                <ActionBtn label="Remove" onClick={() => { removeFromQueue(i); setExpanded(null) }} />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -423,7 +557,7 @@ function ActionBtn({ label, onClick, disabled }) {
     <button
       onClick={onClick}
       disabled={disabled}
-      className="px-3 py-1 text-xs rounded-full bg-white/10 text-white/70 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
+      className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-xs rounded-full bg-white/10 text-white/70 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed"
     >
       {label}
     </button>

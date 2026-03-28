@@ -103,38 +103,96 @@ export default function QueueSidebar() {
     window.addEventListener('touchend', onEnd)
   }
 
-  // ── Drag-to-reorder (mouse) ──
-  const dragIdx = useRef(null)
+  // ── Drag-to-reorder (mouse + touch) ──
+  const dragIdx     = useRef(null)
   const [dragOver, setDragOver] = useState(null)
   const dragOverRef = useRef(null)
+  const isDragging  = useRef(false)
+  const dragOffsetY = useRef(28)
+  const ghostRef    = useRef(null)
+  const [ghostTrack, setGhostTrack] = useState(null)
+  const listRef     = useRef(null)
+  const currentRowRef = useRef(null)
+
+  // Touch drag state
+  const touchDragActive = useRef(false)
+  const touchTimer      = useRef(null)
+  const [touchDragging, setTouchDragging]   = useState(false)
+  const [pressActive, setPressActive]       = useState(false)
+  const pressActiveIdx  = useRef(null)
 
   function setDragOverBoth(val) {
     dragOverRef.current = val
     setDragOver(val)
   }
 
-  function onDragStart(e, i) {
-    dragIdx.current = i
-    e.dataTransfer.effectAllowed = 'move'
+  function showGhost(track, listRect, startY) {
+    setGhostTrack(track)
+    if (ghostRef.current) {
+      ghostRef.current.style.left   = `${listRect.left}px`
+      ghostRef.current.style.width  = `${listRect.width}px`
+      ghostRef.current.style.transform = `translateY(${startY - dragOffsetY.current}px)`
+      ghostRef.current.style.display = 'flex'
+    }
   }
-  function onDragOver(e, i) {
+
+  function hideGhost() {
+    setGhostTrack(null)
+    if (ghostRef.current) ghostRef.current.style.display = 'none'
+  }
+
+  // ── Mouse drag ──
+  function onMouseDownItem(e, i) {
+    if (e.button !== 0) return
     e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    if (dragOverRef.current !== i) setDragOverBoth(i)
-  }
-  function onDrop(i) {
-    if (dragIdx.current !== null && dragIdx.current !== i) reorderQueue(dragIdx.current, i)
-    dragIdx.current = null
-    setDragOverBoth(null)
-  }
-  function onDragEnd() { dragIdx.current = null; setDragOverBoth(null) }
 
-  // ── Touch drag-to-reorder ──
-  const touchDragActive = useRef(false)
-  const touchTimer = useRef(null)
-  const listRef = useRef(null)
-  const [touchDragging, setTouchDragging] = useState(false)
+    const listRect = listRef.current?.getBoundingClientRect()
+    const rowEl    = e.currentTarget
+    const rowRect  = rowEl?.getBoundingClientRect()
+    if (!listRect) return
 
+    dragIdx.current  = i
+    isDragging.current = false
+    dragOffsetY.current = e.clientY - (rowRect?.top ?? e.clientY - 28)
+
+    function onMouseMove(ev) {
+      if (!isDragging.current) {
+        isDragging.current = true
+        showGhost(queue[i], listRect, ev.clientY)
+      }
+      if (ghostRef.current) {
+        ghostRef.current.style.transform = `translateY(${ev.clientY - dragOffsetY.current}px)`
+      }
+      const target = document.elementFromPoint(ev.clientX, ev.clientY)
+      const row    = target?.closest('[data-qi]')
+      if (row) {
+        const idx = parseInt(row.dataset.qi)
+        if (!isNaN(idx) && idx !== dragOverRef.current) setDragOverBoth(idx)
+      }
+    }
+
+    function onMouseUp() {
+      if (
+        isDragging.current &&
+        dragIdx.current !== null &&
+        dragOverRef.current !== null &&
+        dragIdx.current !== dragOverRef.current
+      ) {
+        reorderQueue(dragIdx.current, dragOverRef.current)
+      }
+      dragIdx.current = null
+      isDragging.current = false
+      hideGhost()
+      setDragOverBoth(null)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup',   onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup',   onMouseUp)
+  }
+
+  // ── Touch drag ──
   useEffect(() => {
     const el = listRef.current
     if (!el) return
@@ -142,8 +200,11 @@ export default function QueueSidebar() {
       if (!touchDragActive.current) return
       e.preventDefault()
       const touch = e.touches[0]
+      if (ghostRef.current) {
+        ghostRef.current.style.transform = `translateY(${touch.clientY - dragOffsetY.current}px)`
+      }
       const target = document.elementFromPoint(touch.clientX, touch.clientY)
-      const row = target?.closest('[data-qi]')
+      const row    = target?.closest('[data-qi]')
       if (row) {
         const idx = parseInt(row.dataset.qi)
         if (!isNaN(idx) && idx !== dragOverRef.current) setDragOverBoth(idx)
@@ -154,18 +215,29 @@ export default function QueueSidebar() {
   }, [])
 
   function onTouchStartItem(e, i) {
-    dragIdx.current = i
+    const touch  = e.touches[0]
+    const rowEl  = e.currentTarget
+    const rowRect = rowEl?.getBoundingClientRect()
+    dragIdx.current     = i
+    pressActiveIdx.current = i
+    dragOffsetY.current = touch.clientY - (rowRect?.top ?? touch.clientY - 28)
     touchDragActive.current = false
+    setPressActive(true)
     clearTimeout(touchTimer.current)
     touchTimer.current = setTimeout(() => {
       touchDragActive.current = true
       setTouchDragging(true)
+      setPressActive(false)
+      const listRect = listRef.current?.getBoundingClientRect()
+      if (listRect) showGhost(queue[i], listRect, touch.clientY)
       navigator.vibrate?.(50)
     }, 250)
   }
 
   function onTouchEndItem() {
     clearTimeout(touchTimer.current)
+    setPressActive(false)
+    hideGhost()
     if (
       touchDragActive.current &&
       dragIdx.current !== null &&
@@ -174,17 +246,24 @@ export default function QueueSidebar() {
     ) {
       reorderQueue(dragIdx.current, dragOverRef.current)
     }
-    dragIdx.current = null
+    dragIdx.current        = null
+    pressActiveIdx.current = null
     touchDragActive.current = false
     setTouchDragging(false)
     setDragOverBoth(null)
   }
 
+  useEffect(() => {
+    if (queueOpen) {
+      requestAnimationFrame(() => currentRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    }
+  }, [queueOpen])
+
   if (!queueOpen) return null
 
   return (
     <aside
-      className="fixed right-0 bg-yt-surface border-l border-t border-yt-border z-30 flex flex-col rounded-tl-xl shadow-2xl"
+      className="fixed right-0 bg-yt-surface border-l border-t border-yt-border z-30 hidden md:flex flex-col rounded-tl-xl shadow-2xl"
       style={{
         width,
         height,
@@ -217,6 +296,7 @@ export default function QueueSidebar() {
             onClick={toggleExpand}
             className="text-yt-muted hover:text-white p-1"
             title={isExpanded ? 'Collapse' : 'Expand to full screen'}
+            aria-label={isExpanded ? 'Collapse' : 'Expand to full screen'}
           >
             <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
               {isExpanded
@@ -227,11 +307,46 @@ export default function QueueSidebar() {
           </button>
 
           {/* Close */}
-          <button onClick={toggleQueueOpen} className="text-yt-muted hover:text-white p-1">
+          <button onClick={toggleQueueOpen} aria-label="Close Queue" className="text-yt-muted hover:text-white p-1">
             <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
               <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
             </svg>
           </button>
+        </div>
+      </div>
+
+      {/* Ghost — always mounted, positioned via transform for GPU-accelerated movement */}
+      <div
+        ref={ghostRef}
+        className="fixed z-50 pointer-events-none items-center gap-2 px-3 py-2.5"
+        style={{
+          display: 'none',
+          top: 0,
+          left: 0,
+          width: '100%',
+          willChange: 'transform',
+          background: 'rgba(18,18,30,0.97)',
+          borderTop: '1px solid rgba(255,255,255,0.1)',
+          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.8), 0 4px 12px rgba(0,0,0,0.4)',
+          transform: 'translateY(0px)',
+        }}
+      >
+        <div className="flex-shrink-0 cursor-grab text-yt-muted px-0.5">
+          <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M8 6h2v2H8V6zm0 4h2v2H8v-2zm0 4h2v2H8v-2zm6-8h2v2h-2V6zm0 4h2v2h-2v-2zm0 4h2v2h-2v-2z"/>
+          </svg>
+        </div>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-yt-surface2">
+            {ghostTrack?.album_art && (
+              <img src={ghostTrack.album_art} alt="" className="w-10 h-10 object-cover" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate text-white">{ghostTrack?.name}</p>
+            <p className="text-xs text-yt-muted truncate">{ghostTrack?.artists}</p>
+          </div>
         </div>
       </div>
 
@@ -245,17 +360,18 @@ export default function QueueSidebar() {
           <div
             key={`${track.id}-${i}`}
             data-qi={i}
-            draggable
-            onDragStart={e => onDragStart(e, i)}
-            onDragOver={e => onDragOver(e, i)}
-            onDrop={() => onDrop(i)}
-            onDragEnd={onDragEnd}
+            ref={i === queueIndex ? currentRowRef : null}
+            onMouseDown={e => onMouseDownItem(e, i)}
             onTouchStart={e => onTouchStartItem(e, i)}
             onTouchEnd={onTouchEndItem}
+            style={{
+              paddingTop: dragOver === i && ghostTrack && dragIdx.current !== i ? '48px' : '0px',
+              transition: 'padding-top 0.18s cubic-bezier(0.4,0,0.2,1)',
+            }}
             className={`flex items-center gap-2 px-3 py-2.5 select-none transition-colors
               ${i === queueIndex ? 'bg-yt-surface2' : 'hover:bg-yt-surface2'}
-              ${dragOver === i ? 'border-t-2 border-yt-red' : 'border-t-2 border-transparent'}
-              ${touchDragging && dragIdx.current === i ? 'opacity-40 scale-95' : ''}
+              ${ghostTrack && dragIdx.current === i ? 'opacity-0' : ''}
+              ${pressActive && pressActiveIdx.current === i ? 'scale-95 bg-white/10' : ''}
             `}
           >
             {/* Drag handle */}
@@ -268,7 +384,7 @@ export default function QueueSidebar() {
             {/* Thumbnail + info */}
             <div
               className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-              onClick={() => !touchDragging && play(track, queue)}
+              onClick={() => !ghostTrack && !touchDragging && play(track, queue)}
             >
               <div className="w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-yt-surface2">
                 <img

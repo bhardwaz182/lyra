@@ -7,19 +7,16 @@ const TAB_LABELS = { liked: 'Liked Songs', playlists: 'Playlists', recent: 'Rece
 
 export default function Library() {
   const [tab, setTab] = useState('liked')
-  const likedTrackIds = usePlayerStore(s => s.likedTrackIds)
+  const likedTracks = usePlayerStore(s => s.likedTracks)
   const playlists = usePlayerStore(s => s.playlists)
   const recentTracks = usePlayerStore(s => s.recentTracks)
   const { play, createPlaylist, deletePlaylist } = usePlayerStore()
-
-  // Liked songs — we only store IDs, so show recent tracks that are liked
-  const likedTracks = recentTracks.filter(t => likedTrackIds.includes(t.id))
 
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [selectedPlaylist, setSelectedPlaylist] = useState(null)
 
   return (
-    <div className="px-8 py-6">
+    <div className="px-4 md:px-8 py-6">
       <h1 className="text-2xl font-bold mb-6">Your Library</h1>
 
       {/* Tabs */}
@@ -98,7 +95,7 @@ export default function Library() {
                   <p className="text-sm font-medium truncate">{pl.name}</p>
                   <p className="text-xs text-yt-muted">{pl.tracks.length} songs</p>
                   <button
-                    onClick={e => { e.stopPropagation(); deletePlaylist(pl.id) }}
+                    onClick={e => { e.stopPropagation(); if (window.confirm(`Delete "${pl.name}"? This cannot be undone.`)) deletePlaylist(pl.id) }}
                     className="absolute top-2 right-2 text-yt-muted hover:text-white opacity-0 group-hover:opacity-100 p-1"
                   >
                     <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">

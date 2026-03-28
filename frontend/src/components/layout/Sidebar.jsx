@@ -20,7 +20,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="flex-1 px-2">
-        {links.map(({ to, label, Icon = () => null, icon: Icon2 }) => (
+        {links.map(({ to, label, icon: Icon2 }) => (
           <NavLink
             key={to}
             to={to}

@@ -48,6 +48,7 @@ export default function Artist() {
   if (!artist) return <div className="px-8 py-6 text-yt-muted">Artist not found.</div>
 
   const tracks = artist.tracks || []
+  const visibleTracks = tracks.slice(0, 5)
   const heroImage = bio?.image || artist.album_art || artist.picture_xl || artist.picture_big
 
   return (
@@ -75,7 +76,7 @@ export default function Artist() {
 
       <div className="px-8 py-2 mb-4 flex items-center gap-3">
         <button
-          onClick={() => tracks.length && play(tracks[0], tracks)}
+          onClick={() => visibleTracks.length && play(visibleTracks[0], visibleTracks)}
           className="flex items-center gap-2 bg-yt-red hover:bg-red-600 text-white px-5 py-2 rounded-full text-sm font-semibold"
         >
           <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
@@ -86,8 +87,8 @@ export default function Artist() {
       {/* Top tracks */}
       <section className="px-4 mb-8">
         <h2 className="text-lg font-semibold px-4 mb-2">Top Songs</h2>
-        {tracks.slice(0, 5).map((track, i) => (
-          <TrackRow key={track.id || i} track={track} index={i} queue={tracks} />
+        {visibleTracks.map((track, i) => (
+          <TrackRow key={track.id || i} track={track} index={i} queue={visibleTracks} />
         ))}
       </section>
 

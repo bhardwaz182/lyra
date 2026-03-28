@@ -28,6 +28,7 @@ export default function Search() {
   const [combined, setCombined] = useState([])
 
   const [loading, setLoading] = useState(false)
+  const [searchError, setSearchError] = useState(null)
   const [suggestions, setSuggestions] = useState([])
   const [quickTracks, setQuickTracks] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -37,6 +38,7 @@ export default function Search() {
   function doSearch(query, searchType, newOffset = 0) {
     if (!query.trim()) return
     setLoading(true)
+    setSearchError(null)
     setShowSuggestions(false)
 
     if (searchType === 'all') {
@@ -60,7 +62,7 @@ export default function Search() {
           if (ari < artists.length) flat.push(artists[ari++])
         }
         setCombined(flat)
-      }).finally(() => setLoading(false))
+      }).catch(err => { setSearchError(err) }).finally(() => setLoading(false))
     } else {
       api.search(query, searchType, newOffset)
         .then(data => {
@@ -69,7 +71,7 @@ export default function Search() {
           setHasMore(res.length >= 20)
           setOffset(newOffset)
         })
-        .catch(console.error)
+        .catch(err => { setSearchError(err) })
         .finally(() => setLoading(false))
     }
   }
@@ -185,6 +187,7 @@ export default function Search() {
                   <QuickTrackItem
                     key={track.id}
                     track={track}
+                    allTracks={quickTracks}
                     onSelect={() => {
                       setShowSuggestions(false)
                       setSearchParams({ q, type })
@@ -199,7 +202,7 @@ export default function Search() {
       </form>
 
       {/* Type chips */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {TYPES.map(t => (
           <button
             key={t}
@@ -215,8 +218,21 @@ export default function Search() {
         ))}
       </div>
 
+      {/* Error state */}
+      {searchError && (
+        <div className="flex flex-col items-center py-16 text-yt-muted">
+          <p className="mb-4">Couldn't load results. Try again.</p>
+          <button
+            onClick={() => doSearch(q, type)}
+            className="px-4 py-2 bg-yt-surface hover:bg-yt-surface2 text-white rounded-lg text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Empty state */}
-      {!q.trim() && !hasResults && (
+      {!searchError && !q.trim() && !hasResults && (
         <div className="text-center text-yt-muted py-16">
           <svg width="48" height="48" fill="currentColor" viewBox="0 0 24 24" className="mx-auto mb-4 opacity-40">
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
@@ -226,7 +242,7 @@ export default function Search() {
       )}
 
       {/* ── ALL mode — single flat list ── */}
-      {type === 'all' && (
+      {!searchError && type === 'all' && (
         <>
           {loading && Array.from({ length: 8 }).map((_, i) => <TrackSkeleton key={i} />)}
           {!loading && combined.map((item, i) => (
@@ -239,7 +255,7 @@ export default function Search() {
       )}
 
       {/* ── Single-type mode ── */}
-      {type !== 'all' && (
+      {!searchError && type !== 'all' && (
         <>
           {loading && type === 'track' && Array.from({ length: 8 }).map((_, i) => <TrackSkeleton key={i} />)}
           {loading && type !== 'track' && <RowOfCards count={6} />}
@@ -292,6 +308,8 @@ function CombinedRow({ item }) {
     else play(item, [item])
   }
 
+  const itemType = item.type === 'artist' ? 'Artist' : item.album_type ? 'Album' : 'Song'
+
   const subtitle = item.type === 'track'
     ? [item.artists, item.album].filter(Boolean).join(' · ')
     : item.type === 'album'
@@ -324,7 +342,10 @@ function CombinedRow({ item }) {
       </div>
       <div className="flex-1 min-w-0 cursor-pointer" onClick={handleClick}>
         <p className="text-sm font-medium truncate text-yt-text">{item.name}</p>
-        <p className="text-xs text-yt-muted truncate mt-0.5">{subtitle}</p>
+        <p className="text-xs text-yt-muted truncate mt-0.5">
+          <span className="inline-block px-1.5 py-0.5 text-[10px] rounded bg-white/10 text-yt-muted mr-1 uppercase tracking-wide">{itemType}</span>
+          {subtitle}
+        </p>
       </div>
 
       {/* Three-dot menu — track type only */}
@@ -370,11 +391,11 @@ function PlayNextIcon() {
   return <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M3 10h11v2H3zm0-4h11v2H3zm0 8h7v2H3zm13-1v8l6-4z" /></svg>
 }
 
-function QuickTrackItem({ track, onSelect }) {
+function QuickTrackItem({ track, allTracks, onSelect }) {
   const { play } = usePlayerStore()
 
   function handleClick() {
-    play(track, [track])
+    play(track, allTracks)
     onSelect()
   }
 

@@ -14,7 +14,7 @@ export default function ArtistCard({ artist }) {
           className="w-36 h-36 object-cover rounded-full mx-auto"
           onError={e => { e.target.style.background = '#383838'; e.target.src = '' }}
         />
-        <div className="play-overlay absolute bottom-1 right-6 w-9 h-9 bg-yt-red rounded-full flex items-center justify-center shadow-lg">
+        <div className="play-overlay absolute bottom-1 right-2 w-9 h-9 bg-yt-red rounded-full flex items-center justify-center shadow-lg">
           <svg width="16" height="16" fill="white" viewBox="0 0 24 24">
             <path d="M8 5v14l11-7z" />
           </svg>

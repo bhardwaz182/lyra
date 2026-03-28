@@ -71,7 +71,7 @@ export default function TrackRow({ track, index, queue, showAlbumArt = true }) {
       <div className="flex items-center gap-3 flex-shrink-0">
         <button
           onClick={e => { e.stopPropagation(); addToQueue(track) }}
-          className="opacity-0 group-hover:opacity-100 text-yt-muted hover:text-white p-1 transition-opacity"
+          className="opacity-100 sm:opacity-0 sm:group-hover:sm:opacity-100 text-yt-muted hover:text-white p-1 transition-opacity"
           title="Add to queue"
         >
           <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">

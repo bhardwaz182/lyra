@@ -8,9 +8,9 @@ function fmt(ms) {
 }
 
 export default function SearchTrackRow({ track, queue }) {
-  const { play, addToQueue, playNext, currentTrack, isPlaying, pause, resume, likedTrackIds, toggleLike } = usePlayerStore()
+  const { play, addToQueue, playNext, currentTrack, isPlaying, pause, resume, likedTracks, toggleLike } = usePlayerStore()
   const isCurrent = currentTrack?.id === track.id
-  const isLiked = likedTrackIds.includes(track.id)
+  const isLiked = likedTracks.some(t => t.id === track.id)
   const [menuOpen, setMenuOpen] = useState(false)
 
   function handlePlay() {
@@ -89,7 +89,7 @@ export default function SearchTrackRow({ track, queue }) {
       >
         {/* Like */}
         <button
-          onClick={() => toggleLike(track.id)}
+          onClick={() => toggleLike(track)}
           className={`p-2 rounded-full hover:bg-yt-surface2 transition-colors ${isLiked ? 'text-yt-red' : 'text-yt-muted hover:text-white'}`}
           title={isLiked ? 'Unlike' : 'Like'}
         >
@@ -128,7 +128,7 @@ export default function SearchTrackRow({ track, queue }) {
                 <MenuItem
                   icon={isLiked ? <HeartFilledIcon /> : <HeartIcon />}
                   label={isLiked ? 'Remove from liked' : 'Save to liked songs'}
-                  onClick={() => { toggleLike(track.id); setMenuOpen(false) }}
+                  onClick={() => { toggleLike(track); setMenuOpen(false) }}
                 />
               </div>
             </>

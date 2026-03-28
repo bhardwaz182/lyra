@@ -10,19 +10,25 @@ export default function Album() {
   const navigate = useNavigate()
   const [album, setAlbum] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const { play } = usePlayerStore()
 
-  useEffect(() => {
+  function fetchAlbum() {
     setLoading(true)
+    setError(null)
     api.getAlbum(decodeURIComponent(id))
       .then(setAlbum)
-      .catch(console.error)
+      .catch(err => { setError(err); setLoading(false) })
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchAlbum()
   }, [id])
 
   if (loading) {
     return (
-      <div className="px-8 py-6">
+      <div className="px-4 md:px-8 py-6">
         <div className="flex gap-6 mb-8">
           <div className="skeleton w-48 h-48 rounded-lg flex-shrink-0" />
           <div className="flex-1 flex flex-col justify-end gap-3">
@@ -36,7 +42,21 @@ export default function Album() {
     )
   }
 
-  if (!album) return <div className="px-8 py-6 text-yt-muted">Album not found.</div>
+  if (error) {
+    return (
+      <div className="px-4 md:px-8 py-6 flex flex-col items-center justify-center min-h-[40vh]">
+        <p className="text-yt-muted mb-4">Couldn't load content. Try again.</p>
+        <button
+          onClick={fetchAlbum}
+          className="px-4 py-2 bg-yt-surface hover:bg-yt-surface2 text-white rounded-lg text-sm"
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  if (!album) return <div className="px-4 md:px-8 py-6 text-yt-muted">Album not found.</div>
 
   const tracks = album.tracks || []
 
@@ -44,7 +64,7 @@ export default function Album() {
     <div>
       {/* Hero */}
       <div
-        className="px-8 py-8 flex gap-6 items-end"
+        className="px-4 md:px-8 py-8 flex flex-col md:flex-row gap-4 md:gap-6 items-center md:items-end"
         style={{
           background: 'linear-gradient(180deg, #1a1a2e 0%, #0f0f0f 100%)',
         }}
@@ -52,7 +72,7 @@ export default function Album() {
         <img
           src={album.album_art}
           alt={album.name}
-          className="w-48 h-48 rounded-lg object-cover shadow-2xl flex-shrink-0"
+          className="w-32 h-32 md:w-48 md:h-48 rounded-lg object-cover shadow-2xl flex-shrink-0"
           onError={e => { e.target.style.background = '#282828'; e.target.src = '' }}
         />
         <div className="min-w-0">
