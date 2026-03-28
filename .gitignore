@@ -1,0 +1,36 @@
+# ── Frontend ──────────────────────────────────────
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/.local
+
+# ── Backend ───────────────────────────────────────
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.venv/
+backend/venv/
+
+# ── Environment / secrets ─────────────────────────
+.env
+backend/.env
+*.env
+
+# ── Cache ─────────────────────────────────────────
+.ytmclone_cache/
+**/*.mp3
+**/*.flac
+**/*.m4a
+
+# ── OS / editor ───────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.sw?
+
+# ── Logs ──────────────────────────────────────────
+*.log
+npm-debug.log*

@@ -1,0 +1,340 @@
+"""
+Genius service for Freedify.
+Provides lyrics, annotations, and song information from Genius.
+API docs: https://docs.genius.com/
+"""
+import os
+import re
+import httpx
+from typing import Optional, Dict, Any
+import logging
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
+
+
+class GeniusService:
+    """Service for fetching lyrics and annotations from Genius."""
+    
+    API_BASE = "https://api.genius.com"
+    
+    def __init__(self):
+        # Access token: use env var (required for production)
+        self.access_token = os.environ.get("GENIUS_ACCESS_TOKEN", "")
+        if not self.access_token:
+            logger.warning("GENIUS_ACCESS_TOKEN not set - lyrics will not work")
+        self.client = httpx.AsyncClient(timeout=30.0)
+    
+    async def _api_request(self, endpoint: str, params: dict = None) -> dict:
+        """Make authenticated API request to Genius."""
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        if params is None:
+            params = {}
+        
+        response = await self.client.get(
+            f"{self.API_BASE}{endpoint}",
+            headers=headers,
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    async def search_song(self, query: str) -> Optional[Dict[str, Any]]:
+        """Search for a song on Genius. Returns the best match."""
+        try:
+            data = await self._api_request("/search", {"q": query})
+            hits = data.get("response", {}).get("hits", [])
+            
+            # Find first song result
+            for hit in hits:
+                if hit.get("type") == "song":
+                    song = hit.get("result", {})
+                    return {
+                        "id": song.get("id"),
+                        "title": song.get("title"),
+                        "artist": song.get("primary_artist", {}).get("name"),
+                        "url": song.get("url"),
+                        "thumbnail": song.get("song_art_image_thumbnail_url"),
+                        "full_title": song.get("full_title"),
+                    }
+            return None
+        except Exception as e:
+            logger.error(f"Genius search error: {e}")
+            return None
+    
+    async def get_song_details(self, song_id: int) -> Optional[Dict[str, Any]]:
+        """Get detailed song information including annotations."""
+        try:
+            data = await self._api_request(f"/songs/{song_id}")
+            song = data.get("response", {}).get("song", {})
+            
+            # Extract useful info
+            description = song.get("description", {})
+            if isinstance(description, dict):
+                description_text = description.get("plain", "")
+            else:
+                description_text = str(description) if description else ""
+            
+            return {
+                "id": song.get("id"),
+                "title": song.get("title"),
+                "artist": song.get("primary_artist", {}).get("name"),
+                "album": song.get("album", {}).get("name") if song.get("album") else None,
+                "release_date": song.get("release_date_for_display"),
+                "url": song.get("url"),
+                "thumbnail": song.get("song_art_image_url"),
+                "description": description_text,
+                "apple_music_id": song.get("apple_music_id"),
+                "recording_location": song.get("recording_location"),
+                "producer_artists": [p.get("name") for p in song.get("producer_artists", [])],
+                "writer_artists": [w.get("name") for w in song.get("writer_artists", [])],
+                "featured_artists": [f.get("name") for f in song.get("featured_artists", [])],
+            }
+        except Exception as e:
+            logger.error(f"Genius song details error: {e}")
+            return None
+    
+    async def scrape_lyrics(self, genius_url: str) -> Optional[str]:
+        """Scrape lyrics from a Genius song page."""
+        try:
+            # Use browser-like headers to avoid being blocked by Genius
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            
+            response = await self.client.get(genius_url, follow_redirects=True, headers=headers)
+            
+            if response.status_code == 403:
+                logger.warning(f"Genius returned 403 for: {genius_url} - likely IP blocked")
+                return None
+            if response.status_code == 429:
+                logger.warning(f"Genius rate limited for: {genius_url}")
+                return None
+                
+            response.raise_for_status()
+            
+            html_text = response.text
+            logger.info(f"Genius page fetched, size: {len(html_text)} bytes for {genius_url}")
+            
+            soup = BeautifulSoup(html_text, "html.parser")
+            
+            # Method 1: data-lyrics-container (current Genius format)
+            lyrics_containers = soup.find_all("div", {"data-lyrics-container": "true"})
+            
+            if lyrics_containers:
+                lyrics_parts = []
+                for container in lyrics_containers:
+                    for br in container.find_all("br"):
+                        br.replace_with("\n")
+                    lyrics_parts.append(container.get_text())
+                
+                lyrics = "\n".join(lyrics_parts)
+                lyrics = re.sub(r'\n{3,}', '\n\n', lyrics)
+                if lyrics.strip():
+                    logger.info(f"Lyrics found via data-lyrics-container ({len(lyrics)} chars)")
+                    return lyrics.strip()
+            
+            # Method 2: Lyrics__Container class (alternate Genius layout)
+            lyrics_containers_alt = soup.find_all("div", class_=re.compile(r"Lyrics__Container"))
+            if lyrics_containers_alt:
+                lyrics_parts = []
+                for container in lyrics_containers_alt:
+                    for br in container.find_all("br"):
+                        br.replace_with("\n")
+                    lyrics_parts.append(container.get_text())
+                
+                lyrics = "\n".join(lyrics_parts)
+                lyrics = re.sub(r'\n{3,}', '\n\n', lyrics)
+                if lyrics.strip():
+                    logger.info(f"Lyrics found via Lyrics__Container ({len(lyrics)} chars)")
+                    return lyrics.strip()
+            
+            # Method 3: older Genius format
+            lyrics_div = soup.find("div", class_="lyrics")
+            if lyrics_div:
+                text = lyrics_div.get_text().strip()
+                if text:
+                    logger.info(f"Lyrics found via .lyrics div ({len(text)} chars)")
+                    return text
+            
+            # Method 4: Try finding any div with [data-lyrics-container] in the raw HTML
+            # (in case BeautifulSoup parsing missed it)
+            import json
+            match = re.search(r'"lyrics":\s*\{[^}]*"plain":\s*"([^"]+)"', html_text)
+            if match:
+                lyrics = match.group(1).replace("\\n", "\n")
+                logger.info(f"Lyrics found via JSON extraction ({len(lyrics)} chars)")
+                return lyrics
+            
+            logger.warning(f"Could not find lyrics on page: {genius_url} (page size: {len(html_text)} bytes)")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Genius lyrics scrape error for {genius_url}: {e}")
+            return None
+    
+    async def get_song_referents(self, song_id: int) -> list:
+        """Get annotations for a song using the Genius API referents endpoint."""
+        annotations = []
+        try:
+            # Use API to get referents (annotated sections)
+            data = await self._api_request(f"/referents", {
+                "song_id": song_id,
+                "text_format": "plain",
+                "per_page": 20
+            })
+            
+            referents = data.get("response", {}).get("referents", [])
+            
+            for ref in referents[:15]:  # Limit to 15 annotations
+                fragment = ref.get("fragment", "")
+                annotation_list = ref.get("annotations", [])
+                
+                for ann in annotation_list:
+                    # Get the annotation body
+                    body = ann.get("body", {})
+                    if isinstance(body, dict):
+                        plain_text = body.get("plain", "")
+                    else:
+                        plain_text = str(body) if body else ""
+                    
+                    # Also get the annotation state/votes for quality filtering
+                    votes_total = ann.get("votes_total", 0)
+                    
+                    if plain_text and len(plain_text) > 10:
+                        annotations.append({
+                            "fragment": fragment[:150] + "..." if len(fragment) > 150 else fragment,
+                            "text": plain_text,
+                            "votes": votes_total
+                        })
+            
+            # Sort by votes (most upvoted first)
+            annotations.sort(key=lambda x: x.get("votes", 0), reverse=True)
+            
+            return annotations
+            
+        except Exception as e:
+            logger.error(f"Genius referents API error: {e}")
+            return []
+    
+    async def get_lyrics_and_info(self, artist: str, title: str) -> Dict[str, Any]:
+        """
+        Main method: Search for a song, get lyrics and details.
+        Returns a dict with lyrics, about info, annotations, and metadata.
+        """
+        result = {
+            "found": False,
+            "lyrics": None,
+            "title": title,
+            "artist": artist,
+            "about": None,
+            "album": None,
+            "release_date": None,
+            "producers": [],
+            "writers": [],
+            "annotations": [],
+            "genius_url": None,
+            "thumbnail": None,
+        }
+        
+        # Search for the song on Genius (for metadata, annotations, URL)
+        query = f"{artist} {title}"
+        song = await self.search_song(query)
+        
+        if not song:
+            logger.info(f"No Genius match for: {query}")
+            # Still try LRCLIB for lyrics even without Genius match
+            lrclib_lyrics = await self.fetch_lyrics_lrclib(artist, title)
+            if lrclib_lyrics:
+                result["found"] = True
+                result["lyrics"] = lrclib_lyrics
+            return result
+        
+        result["found"] = True
+        result["genius_url"] = song.get("url")
+        result["thumbnail"] = song.get("thumbnail")
+        result["title"] = song.get("title", title)
+        result["artist"] = song.get("artist", artist)
+        
+        # Get detailed info from Genius API
+        song_id = song.get("id")
+        if song_id:
+            details = await self.get_song_details(song_id)
+            if details:
+                result["about"] = details.get("description")
+                result["album"] = details.get("album")
+                result["release_date"] = details.get("release_date")
+                result["producers"] = details.get("producer_artists", [])
+                result["writers"] = details.get("writer_artists", [])
+        
+        # Try LRCLIB first (reliable, no scraping needed)
+        lrclib_lyrics = await self.fetch_lyrics_lrclib(artist, title)
+        if lrclib_lyrics:
+            result["lyrics"] = lrclib_lyrics
+            logger.info(f"Lyrics fetched from LRCLIB for: {artist} - {title}")
+        else:
+            # Fall back to Genius scraping
+            if song.get("url"):
+                lyrics = await self.scrape_lyrics(song["url"])
+                result["lyrics"] = lyrics
+                if lyrics:
+                    logger.info(f"Lyrics fetched from Genius scrape for: {artist} - {title}")
+                else:
+                    logger.warning(f"No lyrics from either LRCLIB or Genius for: {artist} - {title}")
+        
+        # Get annotations via Genius API (always works)
+        if song_id:
+            annotations = await self.get_song_referents(song_id)
+            result["annotations"] = annotations
+        
+        return result
+    
+    async def fetch_lyrics_lrclib(self, artist: str, title: str) -> Optional[str]:
+        """Fetch lyrics from LRCLIB.net (free, no auth required)."""
+        try:
+            params = {
+                "artist_name": artist.split(",")[0].strip(),  # Use primary artist only
+                "track_name": title,
+            }
+            response = await self.client.get(
+                "https://lrclib.net/api/get",
+                params=params,
+                headers={"User-Agent": "Freedify/1.1.8 (https://github.com/freedify)"}
+            )
+            
+            if response.status_code == 404:
+                logger.info(f"LRCLIB: no lyrics for {artist} - {title}")
+                return None
+            
+            if response.status_code != 200:
+                logger.warning(f"LRCLIB returned {response.status_code} for {artist} - {title}")
+                return None
+            
+            data = response.json()
+            
+            # Prefer plain lyrics, fall back to synced
+            plain = data.get("plainLyrics")
+            if plain and plain.strip():
+                return plain.strip()
+            
+            synced = data.get("syncedLyrics")
+            if synced and synced.strip():
+                # Strip timestamp tags [mm:ss.xx] from synced lyrics
+                clean = re.sub(r'\[\d{2}:\d{2}\.\d{2,3}\]\s*', '', synced)
+                return clean.strip()
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"LRCLIB error for {artist} - {title}: {e}")
+            return None
+    
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()
+
+
+# Singleton instance
+genius_service = GeniusService()

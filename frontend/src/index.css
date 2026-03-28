@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --player-height: 88px;
+  --sidebar-width: 240px;
+  --queue-width: 320px;
+  --mobile-nav-height: 56px;
+  --mobile-header-height: 48px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --player-height: 64px;
+    --sidebar-width: 0px;
+    --queue-width: 100%;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --mobile-header-height: 0px;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --mobile-nav-height: 0px;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: radial-gradient(ellipse at 50% 0%, #131650 0%, #07091a 60%);
+  background-attachment: fixed;
+  color: #ffffff;
+  font-family: 'Roboto', sans-serif;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #383838; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #282828 25%, #333 50%, #282828 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+
+/* Carousel scroll */
+.carousel-scroll {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+}
+.carousel-scroll::-webkit-scrollbar { display: none; }
+
+/* Hover play overlay */
+.group:hover .play-overlay { opacity: 1; }
+.play-overlay { opacity: 0; transition: opacity 0.2s; }
+
+/* Track row hover */
+.track-row:hover { background: #282828; }
+.track-row:hover .track-num { display: none; }
+.track-row:hover .track-play-btn { display: flex; }
+.track-play-btn { display: none; }

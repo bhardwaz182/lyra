@@ -1,0 +1,103 @@
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../api/client'
+import usePlayerStore from '../store/playerStore'
+import AlbumCard from '../components/common/AlbumCard'
+import ArtistCard from '../components/common/ArtistCard'
+import TrackRow from '../components/common/TrackRow'
+import { RowOfCards, TrackSkeleton } from '../components/common/Skeleton'
+
+export default function Home() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [activeMood, setActiveMood] = useState(null)
+  const { play } = usePlayerStore()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    api.getHome()
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="px-8 py-6">
+      <h1 className="text-2xl font-bold mb-6">Good evening</h1>
+
+      {/* Trending Tracks */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Trending</h2>
+          <button
+            className="text-sm text-yt-muted hover:text-white"
+            onClick={() => navigate('/search?q=trending&type=track')}
+          >
+            See all
+          </button>
+        </div>
+        {loading
+          ? Array.from({ length: 5 }).map((_, i) => <TrackSkeleton key={i} />)
+          : (data?.trending_tracks || []).slice(0, 10).map((track, i) => (
+              <TrackRow
+                key={track.id}
+                track={track}
+                index={i}
+                queue={data.trending_tracks}
+              />
+            ))}
+      </section>
+
+      {/* New Releases */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4">New Releases</h2>
+        {loading
+          ? <RowOfCards />
+          : <div className="carousel-scroll">
+              {(data?.new_releases || []).map(album => (
+                <AlbumCard key={album.id} item={album} />
+              ))}
+            </div>
+        }
+      </section>
+
+      {/* Featured Artists */}
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold mb-4">Top Artists</h2>
+        {loading
+          ? <RowOfCards />
+          : <div className="carousel-scroll">
+              {(data?.featured_artists || []).map(artist => (
+                <ArtistCard key={artist.id} artist={artist} />
+              ))}
+            </div>
+        }
+      </section>
+
+      {/* Mood chips */}
+      {!loading && data?.moods?.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-lg font-semibold mb-4">Moods & Genres</h2>
+          <div className="flex flex-wrap gap-2">
+            {data.moods.map(m => (
+              <button
+                key={m.label}
+                onClick={() => {
+                  setActiveMood(m.label)
+                  navigate(`/search?q=${encodeURIComponent(m.query)}&type=track`)
+                }}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                  activeMood === m.label
+                    ? 'bg-yt-red text-white'
+                    : 'bg-yt-surface text-yt-muted hover:bg-yt-surface2 hover:text-white'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
